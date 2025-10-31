@@ -1,0 +1,172 @@
+---
+title: "data_03_IBTS_survey_IGFS-WIBTS-Q4 [G7212] and EVHOE-WIBTS-Q4 [G9527]"
+author: "Haleigh Joyce"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libs, message=FALSE, echo=TRUE, warning=FALSE}
+gc()
+rm(list=ls())
+
+
+library(RODBC)
+library(tidyverse)
+library(lattice)
+library(lubridate)
+library(mapplots)
+library(sp)
+library(sf)
+library(reshape2)
+library(readxl)
+library(knitr)
+library(DataCombine)
+library(lattice)
+library(icesTAF)
+library(magrittr)
+library(viridis)
+library(sessioninfo)
+library(stringr)
+```
+
+
+# Setup options
+
+```{r setupoptions}
+curr.year <- 2025
+dat.year <- curr.year -1
+fu.n <- "FU16"
+
+save.plots <- T # set it up as T or F whether you want to save the plots when running all the chunks or kniting the document
+save.tables <- T # set it up as T or F whether you want to save the tables "propmature"" and the "L50" into .txt files when running all the chunks or knitting the document
+
+# ewen plot
+source("boot/initial/functions/required.funcs.r")
+source("boot/initial/functions/ld1.plot.ibts.r")
+```
+
+# Introduction
+
+The goals of this R Markdown document are to:
+
+* Explore IBTS data from Ireland and France
+* Write TAF data tables
+
+Files before (inside "boot/data/IBTS"):
+
+* igfs_nep_final_IBTS_2024.csv
+
+
+Files after (inside "data/data_03_IBTS_surveydata"):
+
+* FU16_IGFS-WIBTS-Q4_G7212_LFD.png
+
+
+
+# Data Work Up
+<a href="#top">Back to top</a>
+
+This Rmarkdown document plots the catch length frequency data from the IBTS surveys for Nephrops in FU 16.
+IGFS-WIBTS-Q4 [G7212] 
+
+This dataset is explored as can indicate signals of recruitment.
+
+## Load in IGFS-WIBTS-Q4 [G7212] Nephrops dataset
+<a href="#top">Back to top</a>
+
+Read in csv files for IGFS time series.
+Celtic Sea Nephrops FU assigned on national network
+```{r dat2, echo=FALSE, fig.height= 10, fig.width=7, results='true'}
+
+nepsurv<- read.csv("boot/data/IBTS/igfs.nep.final.IBTS.2024.csv")
+
+```
+
+
+### IGFS-WIBTS-Q4 [G7212] Numbers measured by FU 
+<a href="#top">Back to top</a>
+
+```{r dat3, echo=FALSE, fig.height= 10, fig.width=7, results='true'}
+
+cs <-nepsurv %>% filter(fu =='16')
+
+# numbers
+t <- cs %>% group_by(year, fu) %>% summarise(n = sum(n)) %>% filter(!is.na(n))
+
+
+tt <- t %>% spread( fu, n)
+
+#tt$Total<- rowSums(tt[,2:4], na.rm=TRUE)
+
+knitr::kable(tt , digits=0)
+
+
+p <- ggplot(t, aes(year, n, fill=as.factor(year))) + geom_bar(stat="identity", position= "stack") + 
+  theme_bw() + ylab("Numbers Measured")  +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank()) +
+  scale_x_continuous(breaks = c(seq(min(t$year), max(t$year), by = 2), max(t$year))) +
+  scale_y_continuous(breaks = seq(0, 5000, 200)) +facet_wrap(~fu)
+
+
+p + theme(axis.title.x = element_text(  size=14),
+          axis.title.y = element_text(  size=14),
+          axis.text.x  = element_text(angle=45, vjust=0.5, size=10),
+          legend.position = "none") 
+
+if (save.plots == T) {
+  ggsave("data/data_03_IBTS_surveydata/IGFS_Numbers_measured.png")
+}
+
+```
+
+
+### IGFS-WIBTS-Q4 [G7212] LFD plot FU 16
+<a href="#top">Back to top</a>
+
+Plots for  WG report
+```{r dat4 , echo=TRUE, warning=FALSE, fig.height=8, fig.width=8}
+
+
+d <- cs %>% filter(fu=='16') %>% group_by(year, CLmm, sex) %>% summarise (n = sum(n), nn=sum(n))
+
+
+names(d) <- c("Year","Length", "Sex", "Landings","Catch")
+d$Discards <- '0'
+d$Discards <- as.numeric(d$Discards)
+d <- d[c("Year", "Length", "Sex","Landings", "Discards", "Catch")]
+d <- as.data.frame(d)
+
+df <- d
+#the names of the data must be
+#Year, Sex, Length, Landings, Discards, Catch
+#in this instance they already are so we don't have to worry about it.
+#call the function, parameter order is
+#1 data frame
+#2 title for the plot
+#3 minimum year to start from
+#4 maximum year to run to
+#5 Minimum landing size
+#6 reference line (typically 35mm so that we can see the proportion of the stock which is considered #fully selected.
+
+
+png("data/data_03_IBTS_surveydata/FU16_IGFS_LFD.png", height=1700, width=1200, res=200)
+
+plot.ld(df, "FU 16", 2003, 2024, 25, 35)
+
+dev.off()
+```
+
+<a href="#top">Back to top</a>
+

@@ -1,0 +1,260 @@
+---
+title: "output_01_assessment_summary"
+author: "Haleigh Joyce"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r libs, message=FALSE, echo=TRUE, warning=FALSE}
+gc()
+rm(list=ls())
+
+library(RODBC)
+library(tidyverse)
+library(lattice)
+library(lubridate)
+library(mapplots)
+library(sp)
+library(sf)
+library(reshape2)
+library(readxl)
+library(knitr)
+library(DataCombine)
+library(lattice)
+library(icesTAF)
+library(magrittr)
+library(viridis)
+library(sessioninfo)
+library(stringr)
+```
+
+# Setup options
+
+```{r setupoptions}
+fu.n <- "FU16"
+
+curr.year <- 2025
+last.year <- curr.year-1
+when_are_you_running_this <- "September" # "September"
+if (when_are_you_running_this == "May") {survey.year <- last.year} else {survey.year <- curr.year}
+
+
+save.plots <- T # set it up as T or F whether you want to save the plots when running all the chunks or kniting the document
+save.tables <- T # set it up as T or F whether you want to save the tables "propmature"" and the "L50" into .txt files when running all the chunks or knitting the document
+
+# ewen plot
+source("boot/initial/functions/required.funcs.r")
+source("boot/initial/functions/ld1.plot.r")
+```
+
+# Introduction
+
+The goals of this R Markdown document are to:
+
+* Create Assessment summary Table and calculate Harvest Rate in the fishery year..
+* Write TAF data tables
+
+Files before (inside "boot/data/intercatch"):
+
+* taf.fu16.exp.csv
+
+
+Files before (inside "model_02_kriging"):
+
+* fu16.uwtv.summary.statistics.adg.csv
+
+Files after (inside "output_01_assessment_summary"):
+
+* fu16.exp.wg.csv
+* fu16.nep.stock.wgmixfish.csv
+* FU16_UWTV_Survey.png
+* FU16_Mean_weights.png
+* FU16_Harvest_Rate.png
+
+
+
+## Load data files 
+<a href="#top">Back to top</a>
+
+This UWTV data summary ADG file is calculated in Model_02 folder when new survey data is finalised and kriged to calculate abundance.
+Abundance estimate is used to calculate harvest rate (removals.n/abundance) in the fishery.
+Commercial fishery sampling programme began in 2003.
+UWTV surveys series started in 2006. 
+This comes from 01 raise grade data.taf.fu16.exp
+
+```{r uwtv table}
+
+summ <-read.csv("boot/data/intercatch/taf.fu16.exp.csv") 
+
+if (survey.year == curr.year) { #Note that this is to be updated when survey year is current year to add 2025 UWTV survey 
+surv <- read.csv("model/model_02_kriging/fu16.uwtv.summary.statistics.adg.csv")
+
+surv <- surv[, c("Year", "abund", "ci", "upper", "lower", "CVgeo")]
+
+names(surv)[names(surv) == "Year"] <- "year"
+  surv <- subset(surv[,names(surv) %in% c("year", "abund", "ci", "upper", "lower", "CVgeo")], year ==  survey.year)
+  surv <- cbind("year"=surv$year, "landings.n"=NA, "discards.n"=NA, "removals.n"=NA, "prop.removal.ret"=NA,
+  "discard.rate"=NA, "dead.discard.rate.n"=NA, "abund"=surv$abund, "hr"=NA, "landings.t"=NA,
+  "discards.t"=NA, "mean.wt.lan"=NA, "mean.wt.dis"=NA, "cv"=surv$CVgeo, "ci"=surv$ci, "b.trig"=NA, "upper"=surv$upper, "lower"=surv$lower)
+  
+  fu16.exp <- rbind(summ, surv)
+}
+# No binding needed as survey.year==last.year - remove line if survey.year==curr.year
+#fu16.exp<-summ
+# calculate hr
+#exp <- right_join(summ, tv, by="year") %>% mutate(hr = removals.n/abund*100)
+
+#put in same format for report/adg same as FU7- North Sea stocks
+## fu16.exp <- exp[c("year", "int.lan.num", "int.dis.num", "int.lan.wgt", "int.dis.wgt", "removals.n", "prop.removals.ret", "dead.disc.r", "dis.rn", "dis.rw", ## "mw.lan", "mw.dis", "abund", "ci", "upper", "lower", "hr" )]
+
+knitr::kable(fu16.exp[ ,c(1:7)] , digits=3)
+knitr::kable(fu16.exp[ ,c(1, 8:18)] , digits=3)
+
+ if (save.tables == T) {
+write.table(fu16.exp, "output/output_01_assessment_summary/fu16.exp.adg.csv",  sep=",", row.names = F)
+ }
+```
+
+
+## Reformat for WGMIXFISH Stock object
+TO BE DONE
+
+<a href="#top">Back to top</a>
+
+```{r mixfish table, eval=FALSE, include=FALSE}
+colnames(fu16.exp)
+mix <- fu16.exp[c("year","abund", "ci", "landings.n", "discards.n", "removals.n", "hr", "landings.t", "discards.t","discard.rate","dead.discard.rate.n",
+             "mean.wt.lan", "mean.wt.dis","prop.removal.ret")] 
+
+# same as input file for Mixfish
+mix$survival.rate <- "0.25"
+mix$survival.rate <- as.numeric(mix$survival.rate)
+
+mix <- mix %>%
+  add_column(fu = "fu.16",
+             .before = "year")
+
+names(mix) <- c("fu", "year", "abund", "ci", "landings.n", "discards.n", "removals.numbers", "harvest.rate", "landings.t", "discards.t", 
+                "discard.rate.n", "dead.disc.rate.n", "mean.wt.lan.gr", "mean.wt.dis.gr", "prop.removal.ret.n", "survival.rate") # "discard.rate.wgt" dont have this column (as above)
+
+mix <- add_column(mix, discard.rate.wgt = c(0), .before = 15)
+
+ if (save.tables == T) {
+write.table(mix, "output/output_01_assessment_summary/fu16.nep.stock.wgmixfish.csv",  sep=",", row.names = F)
+ }
+
+tail(mix)
+
+```
+
+
+## Plot TV abundance and Confidance Intervals and MSY Btrigger.
+<a href="#top">Back to top</a>
+
+No survey in 2015, a linear extrapolation was used to estimate harvest rate for catch options.
+This was agreed by the WGCSE 2015.
+
+```{r abund, echo=FALSE, warning=FALSE, fig.cap="FU16 UWTV abundance estimates (millions of individuals) and Btrigger displayed as dashed line."}
+
+ggplot(fu16.exp, aes(x=year, y= abund)) +
+          geom_errorbar(aes(ymax=upper, ymin=lower, width=0.25)) +
+          geom_line(size = 1) +
+          geom_point() +
+          theme_bw() +
+          geom_vline(xintercept = 2015, linetype = "dashed", color = "darkgrey", size = 1) +  
+          scale_x_continuous(name="\nYear",
+                             breaks = seq(min(fu16.exp$year, na.rm = TRUE), max(fu16.exp$year, na.rm = TRUE), 1)) +
+          scale_y_continuous(name = "Abundance (millions)\n",
+                             breaks = seq(0, max(fu16.exp$upper, na.rm = TRUE)+100, 250),
+                             limits = c(0, max(fu16.exp$upper, na.rm = TRUE)+100)) + 
+          geom_hline(aes(yintercept=0),colour="#990000",linetype="dashed",size = 0.9) +
+          annotate("text", x = 2015, y = max(fu16.exp$abund, na.rm = TRUE) - 10, 
+           label = "No Data", color = "darkgrey", angle = 90, vjust = 0.5, size = 3) +
+            theme(panel.grid = element_blank())
+
+
+
+
+if (save.plots == T) {
+ggsave("model/model_02_kriging/FU22_Abundance_estimates.png")
+}
+
+
+if (save.plots == T) {
+ggsave("output/output_01_assessment_summary/FU16_UWTV_Survey.png")
+}
+    
+```
+
+
+## Plot of estimated mean weights from National sampling programme.
+<a href="#top">Back to top</a>
+
+Plot mean weights (grs) in landings and discards.
+
+```{r mw, echo=FALSE, warning=FALSE,  fig.height=5, fig.width=9,warning=FALSE, fig.cap="Mean weights (gr) from national sampling programme."}
+
+p2 <- ggplot(fu16.exp, aes(year,mean.wt.lan)) + geom_line() + geom_point() +
+  coord_cartesian(ylim=c(0,75))+
+  scale_y_continuous(breaks = c(seq(0, 75, by=15)))+#, max(lfd.sum$Mean_Weight))) +
+  ylab("Mean weight (g)")+
+  scale_x_continuous(breaks = c(seq(max(fu16.exp$year), min(fu16.exp$year), by=-2))) +
+  xlab("Year")+
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+p2 + theme(axis.text=element_text(size=10),axis.title=element_text(size=10)) + theme(legend.title=element_blank())
+
+
+if (save.plots == T) {
+ggsave("output/output_01_assessment_summary/FU16_Mean_weights.png")
+}
+
+```
+
+
+## Plot of Harvest Rates Updated Survey series
+<a href="#top">Back to top</a>
+
+The 2015 harvest rate is estimated based on a linear interpolation of abundance for 2015 when no survey was carried out.
+Current MSY Harvest Rate of 6.2% for FU22 by WKMSYRef4 (ICES, 2016).
+```{r hr, echo=FALSE, warning=FALSE, fig.cap="FU22 Harvest Rate series."}
+
+p3 <- ggplot(fu16.exp, aes(year,hr)) + geom_line() + geom_point() +
+  coord_cartesian(ylim=c(0,10))+
+  scale_y_continuous(breaks = c(seq(0, 10, by=2.5))) +
+  ylab("Harvest rate (%)")+
+  scale_x_continuous(breaks = c(seq(max(fu16.exp$year), min(fu16.exp$year), by=-2))) +
+  xlab("Year")+
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+p3 + geom_hline(aes(yintercept=6.2),size = 1,colour="blue", linetype="dashed") + 
+  theme(axis.text=element_text(size=10),axis.title=element_text(size=10))
+
+if (save.plots == T) {
+ggsave("output/output_01_assessment_summary/FU16_Harvest_Rate.png")
+}
+```
+
+
+<a href="#top">Back to top</a>
+
+## Session
+<a href="#top">Back to top</a>
+```{r info , echo=TRUE, warning=FALSE, fig.height=8, fig.width=8}
+session_info()
+
+```
